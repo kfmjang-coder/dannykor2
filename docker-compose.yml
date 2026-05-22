@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    image: dannykor2:latest
+    container_name: tennis-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required in .env (>=32 chars)}
+      DATABASE_URL: /app/data/app.db
+      TZ: Asia/Seoul
+
+  backup:
+    image: dannykor2:latest
+    container_name: tennis-backup
+    depends_on:
+      - app
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: /app/data/app.db
+      BACKUP_DIR: /app/data/backups
+      BACKUP_KEEP: ${BACKUP_KEEP:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      TZ: Asia/Seoul
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep "$$BACKUP_INTERVAL_SECONDS";
+          npx tsx scripts/backup.ts || echo "Backup failed at $$(date)";
+        done
