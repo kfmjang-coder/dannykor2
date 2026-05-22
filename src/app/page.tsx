@@ -1,52 +1,101 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/db/client';
+import { reservations, users } from '@/db/schema';
 import { getCurrentUser } from '@/lib/auth';
 import { getSession } from '@/lib/session';
 import { getSettings } from '@/lib/settings';
+import { addDaysKst, todayKst } from '@/lib/kst';
+import DateNav from '@/components/date-nav';
 import LogoutButton from '@/components/logout-button';
+import ReservationGrid, { type GridReservation } from '@/components/reservation-grid';
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   const session = await getSession();
   if (!session.userId) redirect('/login');
   if (session.mustChangePassword) redirect('/password/change');
 
-  const user = await getCurrentUser();
-  if (!user) redirect('/login');
+  const me = await getCurrentUser();
+  if (!me) redirect('/login');
 
   const s = getSettings();
-  const displayId =
-    user.dong && user.ho ? `${user.dong}동 ${user.ho}호` : (user.email ?? '');
+  const today = todayKst();
+  const max = addDaysKst(today, s.reservation_horizon_days);
+
+  const params = await searchParams;
+  let date = params.date ?? today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = today;
+  if (date < today) date = today;
+  if (date > max) date = max;
+
+  const rows = db
+    .select({
+      id: reservations.id,
+      courtId: reservations.courtId,
+      startHour: reservations.startHour,
+      partySize: reservations.partySize,
+      userId: reservations.userId,
+      userName: users.name,
+      userDong: users.dong,
+      userHo: users.ho,
+    })
+    .from(reservations)
+    .innerJoin(users, eq(users.id, reservations.userId))
+    .where(and(eq(reservations.date, date), eq(reservations.status, 'active')))
+    .all();
+
+  const gridReservations: GridReservation[] = rows.map((r) => ({
+    id: r.id,
+    courtId: r.courtId,
+    startHour: r.startHour,
+    partySize: r.partySize,
+    userName: r.userName,
+    userDong: r.userDong,
+    userHo: r.userHo,
+    mine: r.userId === me.id,
+  }));
+
+  const displayId = me.dong && me.ho ? `${me.dong}동 ${me.ho}호` : (me.email ?? '');
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-4xl p-6">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">아파트 테니스장 예약</h1>
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-gray-600">
-            {user.name} ({displayId}){user.role === 'admin' && ' · 관리자'}
-          </span>
-          {user.role === 'admin' && (
+          <Link href="/me/reservations" className="rounded border px-3 py-1 hover:bg-gray-100">
+            내 예약
+          </Link>
+          {me.role === 'admin' && (
             <Link href="/admin" className="rounded border px-3 py-1 hover:bg-gray-100">
               관리자
             </Link>
           )}
+          <span className="text-gray-600">
+            {me.name} ({displayId})
+          </span>
           <LogoutButton />
         </div>
       </header>
-      <p className="mt-4 text-gray-600">
-        예약 화면(코트 × 시간 격자)은 M3 단계에서 구현 예정입니다.
+      <DateNav date={date} today={today} horizonDays={s.reservation_horizon_days} />
+      <ReservationGrid
+        date={date}
+        today={today}
+        hourStart={s.operating_hour_start}
+        hourEnd={s.operating_hour_end}
+        courtCount={s.court_count}
+        partySizeMin={s.party_size_min}
+        partySizeMax={s.party_size_max}
+        reservations={gridReservations}
+      />
+      <p className="mt-4 text-xs text-gray-500">
+        취소는 시작 {s.cancel_deadline_hours}시간 전까지 가능합니다. 같은 날 최대{' '}
+        {s.daily_reservation_limit_per_user}개까지 예약할 수 있습니다.
       </p>
-      <section className="mt-6 rounded-lg border bg-white p-4">
-        <h2 className="font-semibold">현재 운영 설정</h2>
-        <ul className="mt-2 text-sm text-gray-700">
-          <li>운영 시간: {s.operating_hour_start}:00 – {s.operating_hour_end}:00</li>
-          <li>코트 수: {s.court_count}면</li>
-          <li>예약 인원: {s.party_size_min} – {s.party_size_max}명</li>
-          <li>예약 가능 기간: 오늘 + {s.reservation_horizon_days}일</li>
-          <li>취소 마감: 시작 {s.cancel_deadline_hours}시간 전</li>
-          <li>1인 1일 한도: {s.daily_reservation_limit_per_user}슬롯</li>
-        </ul>
-      </section>
     </main>
   );
 }
