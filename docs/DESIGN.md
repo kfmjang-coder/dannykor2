@@ -1,5 +1,7 @@
 # 아파트 테니스장 예약 시스템 - 설계 문서
 
+> 마지막 갱신: 2026-05-22
+
 ## 1. 개요
 
 ### 1.1 목적
@@ -7,9 +9,9 @@
 
 ### 1.2 범위 (MVP)
 - 주민 로그인
-- 예약 생성/조회/취소
-- 관리자에 의한 회원 승인
-- 관리자에 의한 모든 예약 수정/삭제
+- 예약 생성/조회/취소 (2면 코트 × 1시간 단위 슬롯)
+- 관리자에 의한 회원 승인 및 예약 수정/삭제
+- **모든 운영 파라미터를 관리자 페이지에서 변경 가능** (운영 시간, 코트 수, 인원 범위, 예약 가능 기간, 취소 마감)
 - 예약 규칙 자동 검증
 
 ### 1.3 비범위 (이후 확장)
@@ -37,31 +39,51 @@
 
 ---
 
-## 3. 사용자 시나리오
+## 3. 운영 파라미터 (모두 관리자 페이지에서 조정)
 
-### 3.1 주민 (User)
-1. 관리자가 발급한 계정 정보(동/호수, 임시 비밀번호)로 로그인
-2. 첫 로그인 시 비밀번호 변경
-3. 날짜 선택 → 비어있는 시간 슬롯 확인 → 인원수 입력 → 예약
-4. 본인 예약 목록 조회 / 취소 (예약 시작 1시간 전까지)
+다음 값들은 코드 상수가 아닌 **DB `settings` 테이블의 키–값**으로 저장하며, 관리자 페이지에서 변경 가능. 변경 즉시 모든 검증 로직에 반영된다.
 
-### 3.2 관리자 (Admin)
-1. 관리자 계정으로 로그인
-2. **회원 관리**: 가입 신청 승인/거절, 비밀번호 초기화, 계정 잠금
-3. **예약 관리**: 전체 예약 조회, 수정, 강제 취소 (수기 대장 마이그레이션 포함)
-4. **운영 설정**: 운영 시간, 휴장일 설정 (V2)
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `operating_hour_start` | 6 | 운영 시작 시(0–23) |
+| `operating_hour_end` | 22 | 운영 종료 시(exclusive) |
+| `court_count` | 2 | 코트 면 수 |
+| `party_size_min` | 1 | 1예약 최소 인원 |
+| `party_size_max` | 4 | 1예약 최대 인원 (단/복식 모두 허용) |
+| `reservation_horizon_days` | 30 | 오늘로부터 며칠 후까지 예약 가능 |
+| `cancel_deadline_hours` | 6 | 예약 시작 몇 시간 전까지 취소 가능 |
+| `daily_reservation_limit_per_user` | 1 | 1인당 하루 가능한 예약 수 (코트 무관) |
+
+**코트 수 변경 주의**: 코트 수를 줄일 때 이미 존재하는 미래 예약과 충돌하면 변경 거절하고 관리자에게 어느 예약을 정리해야 하는지 보여준다.
 
 ---
 
-## 4. 데이터 모델
+## 4. 사용자 시나리오
 
-### 4.1 users
+### 4.1 주민 (User)
+1. 관리자가 발급한 계정 정보(동/호수 + 임시 비밀번호)로 로그인
+2. 첫 로그인 시 비밀번호 변경 (강제)
+3. 날짜 선택 → 코트별/시간별 슬롯 표 확인 → 빈 슬롯 클릭 → 인원수 입력 → 예약
+4. 내 예약 목록 조회 / 취소 (시작 `cancel_deadline_hours` 시간 전까지)
+
+### 4.2 관리자 (Admin)
+1. 이메일(또는 동/호수) + 비밀번호로 로그인
+2. **회원 관리**: 가입 승인/거절, 비밀번호 초기화, 계정 잠금, 신규 계정 직접 등록
+3. **예약 관리**: 전체 예약 조회/검색, 수정, 강제 취소, 수기 대장 마이그레이션 입력
+4. **설정 관리**: §3의 운영 파라미터 변경
+
+---
+
+## 5. 데이터 모델
+
+### 5.1 users
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
 | id | INTEGER PK | |
-| dong | TEXT NOT NULL | 동 (예: "101") |
-| ho | TEXT NOT NULL | 호 (예: "1502") |
-| name | TEXT NOT NULL | 입주민 이름 |
+| dong | TEXT | 동 (관리자는 NULL 가능) |
+| ho | TEXT | 호 (관리자는 NULL 가능) |
+| email | TEXT | 관리자/연락 용도. 일반 주민은 선택 |
+| name | TEXT NOT NULL | 이름 |
 | phone | TEXT | 연락처 (선택) |
 | password_hash | TEXT NOT NULL | bcrypt 해시 |
 | role | TEXT NOT NULL DEFAULT 'user' | 'user' \| 'admin' |
@@ -70,192 +92,214 @@
 | created_at | INTEGER NOT NULL | epoch ms |
 | approved_at | INTEGER | |
 
-**제약**: `UNIQUE(dong, ho)` — 한 세대당 1계정
+**제약**:
+- `UNIQUE(dong, ho)` (둘 다 NULL이 아닌 행에 한해 — partial unique index)
+- `UNIQUE(email)` (NULL이 아닌 행에 한해)
 
-### 4.2 reservations
+**로그인 식별자**: 동/호수 + 비밀번호, 또는 이메일 + 비밀번호. 로그인 폼에서 둘 다 시도.
+
+### 5.2 reservations
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
 | id | INTEGER PK | |
 | user_id | INTEGER NOT NULL FK→users.id | |
+| court_id | INTEGER NOT NULL | 1, 2, ... (`court_count`까지) |
 | date | TEXT NOT NULL | 'YYYY-MM-DD' (KST 기준) |
-| start_hour | INTEGER NOT NULL | 0–23 (시작 시각, 정시) |
-| end_hour | INTEGER NOT NULL | start_hour + 1 (현재는 항상 1시간) |
-| party_size | INTEGER NOT NULL | 인원수 (1–4 검증) |
+| start_hour | INTEGER NOT NULL | 0–23 (시작 정시) |
+| end_hour | INTEGER NOT NULL | 현재 항상 start_hour + 1 |
+| party_size | INTEGER NOT NULL | `party_size_min`–`party_size_max` |
 | status | TEXT NOT NULL DEFAULT 'active' | 'active' \| 'cancelled' |
-| note | TEXT | 관리자 비고 (수기 대장 마이그레이션 시 사용) |
+| note | TEXT | 관리자 비고 |
 | created_at | INTEGER NOT NULL | |
 | created_by | INTEGER NOT NULL FK→users.id | 본인 또는 관리자 |
 | cancelled_at | INTEGER | |
 | cancelled_by | INTEGER FK→users.id | |
 
-**제약 (애플리케이션 레벨)**:
-- 중복 예약 방지: `(date, start_hour)`에 `status='active'`인 행이 이미 있으면 거절
-  - DB 레벨에서는 partial unique index로 강제:
-    `CREATE UNIQUE INDEX uniq_active_slot ON reservations(date, start_hour) WHERE status = 'active'`
-- 1인 1일 1회: 같은 `user_id`+`date`에 `status='active'` 행이 이미 있으면 거절 (관리자 예외)
-- 운영 시간: `06 <= start_hour < 22`
+**제약**:
+- Partial unique index: `(court_id, date, start_hour) WHERE status='active'`
+  → 같은 코트·날짜·시간에 active 예약 1개만 허용 (race condition 차단)
 
-### 4.3 audit_log (V1.1 확장)
-관리자 액션 추적. MVP에서는 reservations.created_by/cancelled_by로 대체.
+### 5.3 settings
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| key | TEXT PK | §3의 키 |
+| value | TEXT NOT NULL | JSON 또는 단순 문자열 |
+| updated_at | INTEGER NOT NULL | |
+| updated_by | INTEGER FK→users.id | |
+
+마이그레이션 시 §3의 기본값으로 시드.
+
+### 5.4 audit_log (V1.1, 우선 미포함)
+관리자 액션 추적. MVP에서는 reservations.created_by/cancelled_by + settings.updated_by 로 대체.
 
 ---
 
-## 5. API 설계
+## 6. API 설계
 
-모두 Next.js Route Handlers (`app/api/.../route.ts`).
-인증은 `iron-session` 쿠키. 보호 라우트는 미들웨어로 검증.
+모두 Next.js Route Handlers. 인증은 iron-session 쿠키.
 
-### 5.1 인증
+### 6.1 인증
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| POST | `/api/auth/login` | `{ dong, ho, password }` → 세션 발급 |
-| POST | `/api/auth/logout` | 세션 파기 |
+| POST | `/api/auth/login` | `{ identifier, password }` — identifier는 `"동-호"`("101-1502") 또는 이메일 |
+| POST | `/api/auth/logout` | |
 | POST | `/api/auth/change-password` | `{ currentPassword, newPassword }` |
 
-### 5.2 예약 (사용자)
+### 6.2 설정 (모두 공개 GET, 변경은 관리자만)
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/reservations?date=YYYY-MM-DD` | 해당 날짜의 active 예약 목록 (모두 공개, 본인 여부 플래그 포함) |
-| GET | `/api/reservations/mine` | 내 예약 목록 (과거/미래 분리) |
-| POST | `/api/reservations` | `{ date, startHour, partySize }` → 생성. 위 규칙 검증 |
-| DELETE | `/api/reservations/:id` | 본인 + 시작 1시간 전까지만 허용 |
+| GET | `/api/settings` | 현재 운영 파라미터 조회 (UI 렌더링에 사용) |
+| PUT | `/api/admin/settings` | `{ key, value }` 일괄 수정. court_count 축소 시 충돌 검사 |
 
-### 5.3 관리자
+### 6.3 예약 (사용자)
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/admin/users?status=pending` | 회원 목록 |
-| PATCH | `/api/admin/users/:id` | `{ status, role }` 등 변경 |
-| POST | `/api/admin/users/:id/reset-password` | 임시 비밀번호 발급, `must_change_password=1` |
-| POST | `/api/admin/users` | 관리자가 직접 계정 생성 (동/호수/이름/임시PW) |
-| GET | `/api/admin/reservations?from=&to=&userId=` | 전체 예약 검색 |
-| PATCH | `/api/admin/reservations/:id` | 시간/인원/상태/비고 수정 (규칙 우회 가능) |
+| GET | `/api/reservations?date=YYYY-MM-DD` | 해당 날짜 모든 코트의 active 예약. 본인 여부 플래그 포함 |
+| GET | `/api/reservations/mine` | 내 예약 (다가오는/지난 분리) |
+| POST | `/api/reservations` | `{ date, courtId, startHour, partySize }` |
+| DELETE | `/api/reservations/:id` | 본인 + `cancel_deadline_hours` 전까지만 |
+
+### 6.4 관리자
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/admin/users?status=pending` | 회원 목록 (필터링) |
+| PATCH | `/api/admin/users/:id` | status / role 변경 |
+| POST | `/api/admin/users` | 신규 계정 생성 (동/호수/이름/임시PW) |
+| POST | `/api/admin/users/:id/reset-password` | 임시 비밀번호 발급 |
+| GET | `/api/admin/reservations?from=&to=&userId=&courtId=` | 전체 검색 |
+| POST | `/api/admin/reservations` | 관리자 직접 입력 (수기 대장 마이그레이션) |
+| PATCH | `/api/admin/reservations/:id` | 수정 (규칙 우회 가능, 단 partial unique index는 유효) |
 | DELETE | `/api/admin/reservations/:id` | 강제 취소 |
 
 ---
 
-## 6. 화면 구성
+## 7. 화면 구성
 
-### 6.1 공통
-- 헤더: 로고, 로그인한 동/호수, 로그아웃
-- 푸터: 관리실 연락처
+### 7.1 사용자
+- `/login` — 로그인 (동-호수 / 이메일 둘 다 받는 단일 입력란)
+- `/password/change` — 첫 로그인 시 강제 이동
+- `/` — 날짜 선택 + **코트 2면 × 시간 슬롯 격자**
+  - 각 셀: 비어있음(클릭 가능) / 본인 예약(취소 버튼) / 타인 예약(비활성)
+  - 예약 가능 기간(`reservation_horizon_days`)을 넘는 날짜는 비활성
+- `/me/reservations` — 내 예약 목록 (다가오는 / 지난)
 
-### 6.2 사용자 화면
-- `/login` — 로그인
-- `/password/change` — 비밀번호 변경 (강제 시 자동 이동)
-- `/` — 오늘 날짜의 시간표 (06–22시 × 가로 슬롯) + 날짜 네비게이션
-  - 슬롯 클릭 → 인원수 입력 → 예약
-  - 본인 예약은 다른 색으로 표시, 클릭 시 취소 버튼
-- `/me/reservations` — 내 예약 목록 (다가오는/지난)
-
-### 6.3 관리자 화면
-- `/admin` — 대시보드 (오늘 예약 수, 승인 대기 회원 수)
-- `/admin/users` — 회원 목록/승인/비밀번호 초기화/신규 등록
-- `/admin/reservations` — 전체 예약 검색 테이블, 수기 대장 입력(과거 날짜 포함 가능)
+### 7.2 관리자
+- `/admin` — 대시보드 (오늘 코트별 예약 현황, 승인 대기 회원 수)
+- `/admin/users` — 회원 목록, 승인/거절, 비밀번호 초기화, 신규 등록
+- `/admin/reservations` — 전체 예약 검색·수정·삭제. 과거 날짜 입력 모드
+- `/admin/settings` — §3 파라미터 편집
 
 ---
 
-## 7. 예약 규칙 (검증 로직)
+## 8. 검증 로직
 
 ```
-POST /api/reservations 검증 순서:
-1. 로그인 + status='active' 사용자인가
-2. date가 오늘 또는 미래인가 (KST)
-3. 06 <= startHour < 22
-4. 1 <= partySize <= 4
-5. (user_id, date, status='active') 행 존재 여부 → 존재 시 거절
-6. (date, startHour, status='active') 행 존재 여부 → 존재 시 거절
-7. INSERT (트랜잭션, partial unique index가 race condition 막아줌)
+POST /api/reservations:
+1. 로그인 + status='active'
+2. settings 조회 (S)
+3. courtId in [1..S.court_count]
+4. S.operating_hour_start <= startHour < S.operating_hour_end
+5. S.party_size_min <= partySize <= S.party_size_max
+6. (오늘 KST) <= date <= (오늘 + S.reservation_horizon_days)
+7. (user_id, date, status='active')의 active 예약 수 < S.daily_reservation_limit_per_user
+8. 트랜잭션 INSERT — partial unique index가 슬롯 중복 race 차단
 
-DELETE /api/reservations/:id 검증:
-- 예약의 user_id == 세션 user_id
-- now < (date + startHour - 1h)  (KST)
-- status='active'
-→ UPDATE status='cancelled', cancelled_at=now, cancelled_by=self
+DELETE /api/reservations/:id (본인):
+- 본인 예약 + status='active'
+- now < (date+startHour 시각 − S.cancel_deadline_hours)
+- UPDATE status='cancelled', cancelled_at=now, cancelled_by=self
 ```
 
-관리자 라우트는 위 규칙을 우회한다(과거 날짜 입력, 중복 강제 입력 모두 허용 — 단, partial unique index 때문에 active 중복은 여전히 불가하므로 관리자가 기존 예약을 먼저 cancel 처리해야 함).
+관리자 라우트는 §3 파라미터 검증을 건너뛴다 (시간 외 입력, 과거 날짜 마이그레이션 허용). 단 partial unique index로 동일 슬롯에 active 둘은 불가 — 기존 것을 먼저 cancel 처리.
+
+`court_count` 축소 시: `court_id > 새 값`이고 `status='active'`이며 `date >= 오늘`인 예약을 찾아 충돌 보고. 0건이면 변경 적용.
 
 ---
 
-## 8. 보안
+## 9. 보안
 
 - 비밀번호: bcrypt cost 10, 최소 8자
-- 세션: `iron-session` (HttpOnly, Secure, SameSite=Lax 쿠키, 30일 만료)
-- CSRF: SameSite=Lax + POST에 origin 검사
-- 권한 검사는 모든 보호 라우트의 핸들러 첫 줄에서 명시적으로
-- 비밀번호 초기화/변경 등 민감 액션은 rate limit (간단한 메모리 카운터 — MVP)
-- SQL Injection: Drizzle prepared statements 사용
-- 입력 검증: zod 스키마 (서버 측)
+- 세션: iron-session (HttpOnly, Secure, SameSite=Lax, 30일)
+- CSRF: SameSite=Lax + POST origin 검사
+- 권한 검사는 보호 라우트 핸들러 첫 줄에서 명시적으로
+- 비밀번호 초기화 등 민감 액션 rate limit (메모리 카운터로 MVP)
+- 입력 검증은 zod 서버 측에서 항상 수행
+- SQL Injection: Drizzle prepared statements
 
 ---
 
-## 9. 디렉토리 구조 (예정)
+## 10. 디렉토리 구조 (예정)
 
 ```
 /
 ├── docs/
-│   └── DESIGN.md           (이 문서)
+│   └── DESIGN.md
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/login/page.tsx
-│   │   ├── (user)/page.tsx
+│   │   ├── (user)/page.tsx                  # 코트×시간 격자
 │   │   ├── (user)/me/reservations/page.tsx
 │   │   ├── admin/page.tsx
 │   │   ├── admin/users/page.tsx
 │   │   ├── admin/reservations/page.tsx
+│   │   ├── admin/settings/page.tsx
 │   │   └── api/
 │   │       ├── auth/{login,logout,change-password}/route.ts
-│   │       ├── reservations/route.ts
-│   │       ├── reservations/[id]/route.ts
-│   │       ├── reservations/mine/route.ts
-│   │       └── admin/...
+│   │       ├── settings/route.ts
+│   │       ├── reservations/{route,[id]/route,mine/route}.ts
+│   │       └── admin/{users,reservations,settings}/...
 │   ├── db/
-│   │   ├── schema.ts        (Drizzle 스키마)
+│   │   ├── schema.ts
 │   │   ├── client.ts
 │   │   └── migrations/
 │   ├── lib/
-│   │   ├── session.ts       (iron-session 설정)
-│   │   ├── auth.ts          (권한 헬퍼)
+│   │   ├── session.ts
+│   │   ├── auth.ts
+│   │   ├── settings.ts            # 캐시 + 무효화
 │   │   ├── reservation-rules.ts
-│   │   └── kst.ts           (시간대 유틸)
+│   │   └── kst.ts
 │   └── components/
 ├── scripts/
-│   └── seed-admin.ts        (초기 관리자 생성)
+│   └── seed-admin.ts              # 이메일/비밀번호 prompt
 ├── data/
-│   └── app.db               (gitignored)
-├── package.json
-└── README.md
+│   └── app.db                     # gitignored
+└── package.json
 ```
 
 ---
 
-## 10. 마이그레이션 / 운영 절차
+## 11. 운영 절차
 
-1. **초기 관리자 계정**: `npm run seed:admin` 으로 동/호수/임시PW 입력하여 생성
-2. **기존 수기 대장**: 관리자가 관리자 화면에서 과거 날짜로 일괄 입력 가능
-3. **백업**: SQLite 파일을 매일 cron으로 복사 (운영 단계에서 결정)
+1. **초기 관리자**: `npm run seed:admin` 실행 → 이메일(`kfmjang@gmail.com`)·이름·비밀번호 입력 → role='admin', status='active' 계정 생성
+2. **수기 대장 마이그레이션**: 관리자가 `/admin/reservations`에서 과거 날짜로 일괄 입력
+3. **백업**: SQLite 파일을 일 1회 cron으로 복사 (운영 단계 결정)
 
 ---
 
-## 11. 마일스톤
+## 12. 마일스톤
 
 | 단계 | 산출물 | 검증 |
 |------|--------|------|
-| M0 | 설계 문서 (현재) | 사용자 확인 ← **여기** |
-| M1 | 프로젝트 스캐폴딩, DB 스키마, seed:admin | `npm run dev` 동작 |
-| M2 | 로그인/비밀번호 변경 | 수동 테스트 시나리오 통과 |
-| M3 | 예약 생성/조회/취소 + 규칙 검증 | 자동화 테스트 + 수동 |
-| M4 | 관리자 화면 (회원/예약) | 수동 시나리오 통과 |
-| M5 | UI 다듬기, 모바일 반응형 | 휴대폰에서 확인 |
-| M6 | 운영 배포 + 백업 cron | 실 사용 시작 |
+| M0 | 설계 문서 (현재) | 사용자 확인 |
+| M1 | 프로젝트 스캐폴딩, DB 스키마, settings 시드, seed:admin | `npm run dev` 동작 |
+| M2 | 로그인 / 비밀번호 변경 / 권한 가드 | 수동 시나리오 |
+| M3 | 예약 생성/조회/취소 + 코트×시간 격자 UI + 검증 규칙 | 자동화 + 수동 |
+| M4 | 관리자 화면 (회원/예약/설정) | 수동 시나리오 |
+| M5 | UI 다듬기, 모바일 반응형 | 휴대폰 확인 |
+| M6 | 배포 + 백업 cron | 실 사용 시작 |
 
 ---
 
-## 12. 결정 필요 항목 (다음 단계 전 확인)
+## 13. 확정된 의사결정
 
-1. **인원수 범위**: 1–4명이 맞나요? (테니스 단/복식 기준)
-2. **예약 가능 기간**: 며칠 전부터 예약 가능? (예: 오늘부터 7일 후까지)
-3. **취소 가능 시점**: 시작 1시간 전까지가 맞나요?
-4. **테니스장 개수**: 1면인가요, 여러 면인가요? (여러 면이면 스키마에 `court_id` 추가 필요)
-5. **운영 시간**: 06:00–22:00 가정이 맞나요?
-6. **첫 관리자 계정**: 누구로 시작하나요? (`seed:admin` 입력값)
+| 항목 | 값 | 비고 |
+|------|-----|------|
+| 코트 수 | 2 | 관리자 변경 가능 |
+| 1예약 인원 | 1–4명 | 관리자 변경 가능 |
+| 예약 가능 기간 | 오늘 + 30일 | 관리자 변경 가능 |
+| 취소 마감 | 시작 6시간 전 | 관리자 변경 가능 |
+| 운영 시간 | 06:00–22:00 | 관리자 변경 가능 |
+| 1인 1일 한도 | 1슬롯 (코트 무관) | 관리자 변경 가능 |
+| 첫 관리자 | kfmjang@gmail.com | seed:admin 실행 시 입력 |
+| 로그인 방식 | 동-호 또는 이메일 | 관리자는 이메일 사용 |
+| 기술 스택 | Next.js 14 + SQLite + Drizzle | 변경 없음 |
