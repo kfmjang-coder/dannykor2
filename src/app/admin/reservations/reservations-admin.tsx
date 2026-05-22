@@ -133,7 +133,7 @@ export default function ReservationsAdmin({
       <details className="mb-4 rounded border bg-gray-50 p-3" open={false}>
         <summary className="cursor-pointer text-sm font-medium">+ 수기 대장 입력</summary>
         <form
-          className="mt-3 grid grid-cols-6 gap-2 text-sm"
+          className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-6"
           onSubmit={(e) => {
             e.preventDefault();
             createManual(e.currentTarget);
@@ -147,7 +147,12 @@ export default function ReservationsAdmin({
               </option>
             ))}
           </select>
-          <input name="date" type="date" required className="rounded border px-2 py-1" />
+          <input
+            name="date"
+            type="date"
+            required
+            className="col-span-2 rounded border px-2 py-1 sm:col-span-1"
+          />
           <input
             name="startHour"
             type="number"
@@ -171,12 +176,12 @@ export default function ReservationsAdmin({
             min={1}
             placeholder="인원"
             required
-            className="rounded border px-2 py-1"
+            className="col-span-2 rounded border px-2 py-1 sm:col-span-1"
           />
           <input
             name="note"
             placeholder="비고 (선택)"
-            className="col-span-4 rounded border px-2 py-1"
+            className="col-span-2 rounded border px-2 py-1 sm:col-span-4"
           />
           <button
             type="submit"
@@ -243,7 +248,8 @@ export default function ReservationsAdmin({
         </button>
       </form>
 
-      <table className="w-full text-sm">
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <table className="w-full min-w-[760px] text-sm">
         <thead>
           <tr className="border-b bg-gray-50 text-left">
             <th className="px-2 py-2">id</th>
@@ -313,6 +319,7 @@ export default function ReservationsAdmin({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

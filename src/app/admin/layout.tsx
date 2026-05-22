@@ -9,10 +9,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (me.role !== 'admin') redirect('/');
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <header className="flex items-center justify-between border-b pb-4">
-        <h1 className="text-2xl font-bold">관리자</h1>
-        <div className="flex items-center gap-3 text-sm">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6">
+      <header className="flex flex-col gap-2 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold sm:text-2xl">관리자</h1>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <Link href="/" className="rounded border px-3 py-1 hover:bg-gray-100">
             ← 예약 화면
           </Link>
@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <LogoutButton />
         </div>
       </header>
-      <nav className="mt-4 flex gap-4 border-b pb-2 text-sm">
+      <nav className="mt-4 flex flex-wrap gap-3 border-b pb-2 text-sm sm:gap-4">
         <Link href="/admin" className="hover:underline">
           대시보드
         </Link>

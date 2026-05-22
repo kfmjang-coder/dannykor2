@@ -28,31 +28,36 @@ export default async function MyReservationsPage() {
   const upcoming = all.filter((r) => r.date >= today);
   const past = all.filter((r) => r.date < today);
 
-  function row(r: (typeof all)[number], showCancel: boolean) {
+  function card(r: (typeof all)[number], showCancel: boolean) {
     return (
-      <tr key={r.id} className="border-b">
-        <td className="px-3 py-2">{r.date}</td>
-        <td className="px-3 py-2">
-          {String(r.startHour).padStart(2, '0')}:00–{String(r.endHour).padStart(2, '0')}:00
-        </td>
-        <td className="px-3 py-2">코트 {r.courtId}</td>
-        <td className="px-3 py-2">{r.partySize}명</td>
-        <td className="px-3 py-2 text-right">
+      <li
+        key={r.id}
+        className="flex flex-col gap-2 rounded-lg border bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <span className="font-medium">{r.date}</span>
+          <span className="text-gray-700">
+            {String(r.startHour).padStart(2, '0')}:00–{String(r.endHour).padStart(2, '0')}:00
+          </span>
+          <span className="text-gray-700">코트 {r.courtId}</span>
+          <span className="text-gray-700">{r.partySize}명</span>
+        </div>
+        <div className="sm:text-right">
           {showCancel && canCancelNow(r.date, r.startHour) ? (
             <CancelReservationButton id={r.id} />
           ) : (
             <span className="text-xs text-gray-400">—</span>
           )}
-        </td>
-      </tr>
+        </div>
+      </li>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">내 예약</h1>
-        <Link href="/" className="rounded border px-3 py-1 text-sm hover:bg-gray-100">
+    <main className="mx-auto max-w-3xl p-4 sm:p-6">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold sm:text-2xl">내 예약</h1>
+        <Link href="/" className="self-start rounded border px-3 py-1 text-sm hover:bg-gray-100">
           ← 예약 화면으로
         </Link>
       </header>
@@ -62,18 +67,7 @@ export default async function MyReservationsPage() {
         {upcoming.length === 0 ? (
           <p className="mt-2 text-sm text-gray-500">예정된 예약이 없습니다.</p>
         ) : (
-          <table className="mt-2 w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left">
-                <th className="px-3 py-2">날짜</th>
-                <th className="px-3 py-2">시간</th>
-                <th className="px-3 py-2">코트</th>
-                <th className="px-3 py-2">인원</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>{upcoming.map((r) => row(r, true))}</tbody>
-          </table>
+          <ul className="mt-2 space-y-2">{upcoming.map((r) => card(r, true))}</ul>
         )}
       </section>
 
@@ -82,18 +76,7 @@ export default async function MyReservationsPage() {
         {past.length === 0 ? (
           <p className="mt-2 text-sm text-gray-500">지난 예약이 없습니다.</p>
         ) : (
-          <table className="mt-2 w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left">
-                <th className="px-3 py-2">날짜</th>
-                <th className="px-3 py-2">시간</th>
-                <th className="px-3 py-2">코트</th>
-                <th className="px-3 py-2">인원</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>{past.map((r) => row(r, false))}</tbody>
-          </table>
+          <ul className="mt-2 space-y-2">{past.map((r) => card(r, false))}</ul>
         )}
       </section>
     </main>

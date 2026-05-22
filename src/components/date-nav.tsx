@@ -17,30 +17,30 @@ export default function DateNav({
   const canNext = next <= max;
 
   return (
-    <div className="mt-4 flex items-center gap-2">
+    <div className="mt-4 flex flex-wrap items-center gap-2">
       {canPrev ? (
         <Link href={`/?date=${prev}`} className="rounded border px-3 py-1 text-sm hover:bg-gray-100">
-          ← 이전
+          ←
         </Link>
       ) : (
-        <span className="rounded border px-3 py-1 text-sm text-gray-400">← 이전</span>
+        <span className="rounded border px-3 py-1 text-sm text-gray-400">←</span>
       )}
-      <span className="px-2 text-lg font-medium">{date}</span>
+      <span className="px-2 text-base font-medium sm:text-lg">{date}</span>
       {canNext ? (
         <Link href={`/?date=${next}`} className="rounded border px-3 py-1 text-sm hover:bg-gray-100">
-          다음 →
+          →
         </Link>
       ) : (
-        <span className="rounded border px-3 py-1 text-sm text-gray-400">다음 →</span>
+        <span className="rounded border px-3 py-1 text-sm text-gray-400">→</span>
       )}
       <Link
         href={`/?date=${today}`}
-        className="ml-2 rounded border px-3 py-1 text-sm hover:bg-gray-100"
+        className="rounded border px-3 py-1 text-sm hover:bg-gray-100"
       >
         오늘
       </Link>
-      <span className="ml-auto text-xs text-gray-500">
-        예약 가능: {today} ~ {max}
+      <span className="ml-auto whitespace-nowrap text-xs text-gray-500">
+        예약: ~ {max}
       </span>
     </div>
   );

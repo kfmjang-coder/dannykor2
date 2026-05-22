@@ -66,7 +66,8 @@ export default function UsersTable({ users, currentUserId }: { users: User[]; cu
   }
 
   return (
-    <table className="w-full text-sm">
+    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <table className="w-full min-w-[600px] text-sm">
       <thead>
         <tr className="border-b bg-gray-50 text-left">
           <th className="px-2 py-2">식별자</th>
@@ -179,5 +180,6 @@ export default function UsersTable({ users, currentUserId }: { users: User[]; cu
         )}
       </tbody>
     </table>
+    </div>
   );
 }

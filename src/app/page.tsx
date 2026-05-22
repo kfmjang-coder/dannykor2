@@ -63,10 +63,13 @@ export default async function Home({
   const displayId = me.dong && me.ho ? `${me.dong}동 ${me.ho}호` : (me.email ?? '');
 
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">아파트 테니스장 예약</h1>
-        <div className="flex items-center gap-3 text-sm">
+    <main className="mx-auto max-w-4xl p-4 sm:p-6">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold sm:text-2xl">아파트 테니스장 예약</h1>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="order-last w-full text-xs text-gray-600 sm:order-none sm:w-auto sm:text-sm">
+            {me.name} ({displayId})
+          </span>
           <Link href="/me/reservations" className="rounded border px-3 py-1 hover:bg-gray-100">
             내 예약
           </Link>
@@ -75,9 +78,6 @@ export default async function Home({
               관리자
             </Link>
           )}
-          <span className="text-gray-600">
-            {me.name} ({displayId})
-          </span>
           <LogoutButton />
         </div>
       </header>

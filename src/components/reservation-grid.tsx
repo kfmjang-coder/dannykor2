@@ -87,88 +87,93 @@ export default function ReservationGrid(props: GridProps) {
 
   return (
     <div className="mt-4">
-      <table className="w-full table-fixed border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="w-20 border bg-gray-100 px-2 py-1">시간</th>
-            {courts.map((c) => (
-              <th key={c} className="border bg-gray-100 px-2 py-1">
-                코트 {c}
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <table className="w-full min-w-[420px] table-fixed border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="w-14 border bg-gray-100 px-1 py-1 text-xs sm:w-20 sm:px-2 sm:text-sm">
+                시간
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {hours.map((h) => (
-            <tr key={h}>
-              <td className="border px-2 py-1 text-center text-gray-600">
-                {String(h).padStart(2, '0')}:00
-              </td>
-              {courts.map((c) => {
-                const r = map.get(`${c}-${h}`);
-                const past = isPast(h);
-                if (r) {
-                  const label = r.mine
-                    ? `내 예약 (${r.partySize}명)`
-                    : `예약 - ${
-                        r.userDong && r.userHo ? `${r.userDong}-${r.userHo}` : r.userName
-                      } (${r.partySize}명)`;
+              {courts.map((c) => (
+                <th key={c} className="border bg-gray-100 px-1 py-1 text-xs sm:px-2 sm:text-sm">
+                  코트 {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {hours.map((h) => (
+              <tr key={h}>
+                <td className="border px-1 py-1 text-center text-xs text-gray-600 sm:px-2 sm:text-sm">
+                  {String(h).padStart(2, '0')}:00
+                </td>
+                {courts.map((c) => {
+                  const r = map.get(`${c}-${h}`);
+                  const past = isPast(h);
+                  if (r) {
+                    const who = r.userDong && r.userHo ? `${r.userDong}-${r.userHo}` : r.userName;
+                    return (
+                      <td
+                        key={c}
+                        className={`border px-1 py-1.5 sm:px-2 sm:py-2 ${
+                          r.mine ? 'bg-blue-50' : 'bg-gray-50 text-gray-500'
+                        }`}
+                      >
+                        <div className="flex flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="break-keep text-xs sm:text-sm">
+                            {r.mine ? '내 예약' : who} ({r.partySize}명)
+                          </span>
+                          {r.mine && (
+                            <button
+                              type="button"
+                              onClick={() => cancelReservation(r.id)}
+                              disabled={pending}
+                              className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              취소
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  }
                   return (
                     <td
                       key={c}
-                      className={`border px-2 py-2 ${
-                        r.mine ? 'bg-blue-50' : 'bg-gray-50 text-gray-500'
-                      }`}
+                      className={`border px-1 py-1.5 sm:px-2 sm:py-2 ${past ? 'bg-gray-100' : ''}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span>{label}</span>
-                        {r.mine && (
-                          <button
-                            type="button"
-                            onClick={() => cancelReservation(r.id)}
-                            disabled={pending}
-                            className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            취소
-                          </button>
-                        )}
-                      </div>
+                      {past ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected({ courtId: c, startHour: h });
+                            setPartySize(props.partySizeMin);
+                            setError(null);
+                          }}
+                          disabled={pending}
+                          className="w-full rounded border border-dashed border-gray-300 px-1 py-1 text-xs text-gray-500 hover:border-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          + 예약
+                        </button>
+                      )}
                     </td>
                   );
-                }
-                return (
-                  <td key={c} className={`border px-2 py-2 ${past ? 'bg-gray-100' : ''}`}>
-                    {past ? (
-                      <span className="text-xs text-gray-400">지난 시간</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected({ courtId: c, startHour: h });
-                          setPartySize(props.partySizeMin);
-                          setError(null);
-                        }}
-                        disabled={pending}
-                        className="w-full rounded border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500 hover:border-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        + 예약
-                      </button>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {selected && (
         <div
-          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30"
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4"
           onClick={() => setSelected(null)}
         >
           <div
-            className="w-full max-w-sm rounded-lg bg-white p-6 shadow-lg"
+            className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-semibold">예약하기</h3>
