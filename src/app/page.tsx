@@ -1,12 +1,40 @@
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { getCurrentUser } from '@/lib/auth';
+import { getSession } from '@/lib/session';
 import { getSettings } from '@/lib/settings';
+import LogoutButton from '@/components/logout-button';
 
-export default function Home() {
+export default async function Home() {
+  const session = await getSession();
+  if (!session.userId) redirect('/login');
+  if (session.mustChangePassword) redirect('/password/change');
+
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
   const s = getSettings();
+  const displayId =
+    user.dong && user.ho ? `${user.dong}동 ${user.ho}호` : (user.email ?? '');
+
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-bold">아파트 테니스장 예약</h1>
-      <p className="mt-2 text-gray-600">
-        M1 스캐폴딩 완료. 로그인 및 예약 화면은 M2/M3 단계에서 구현 예정입니다.
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">아파트 테니스장 예약</h1>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-gray-600">
+            {user.name} ({displayId}){user.role === 'admin' && ' · 관리자'}
+          </span>
+          {user.role === 'admin' && (
+            <Link href="/admin" className="rounded border px-3 py-1 hover:bg-gray-100">
+              관리자
+            </Link>
+          )}
+          <LogoutButton />
+        </div>
+      </header>
+      <p className="mt-4 text-gray-600">
+        예약 화면(코트 × 시간 격자)은 M3 단계에서 구현 예정입니다.
       </p>
       <section className="mt-6 rounded-lg border bg-white p-4">
         <h2 className="font-semibold">현재 운영 설정</h2>
